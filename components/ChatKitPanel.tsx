@@ -22,7 +22,7 @@ export type FactAction = {
 
 type ChatKitPanelProps = {
   theme: ColorScheme;
-  onWidgetAction: (action: FactAction) => Promise<unknown>;
+  onWidgetAction: (action: FactAction) => Promise<void>;
   onResponseEnd: () => void;
   onThemeRequest: (scheme: ColorScheme) => void;
   /**
@@ -34,6 +34,13 @@ type ChatKitPanelProps = {
 
 type ErrorState = {
   message: string | null;
+};
+
+type CreateSessionResponse = {
+  client_secret?: string;
+  error?: unknown;
+  details?: unknown;
+  message?: unknown;
 };
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -133,10 +140,10 @@ export function ChatKitPanel({
           });
         }
 
-        let data: any = {};
+        let data: CreateSessionResponse = {};
         if (raw) {
           try {
-            data = JSON.parse(raw);
+            data = JSON.parse(raw) as CreateSessionResponse;
           } catch (parseError) {
             console.error(
               "Failed to parse create-session response",
@@ -156,7 +163,7 @@ export function ChatKitPanel({
           throw new Error(detail);
         }
 
-        const clientSecret = data?.client_secret as string | undefined;
+        const clientSecret = data.client_secret;
         if (!clientSecret) {
           throw new Error("Missing client secret in response");
         }
@@ -254,7 +261,7 @@ export function ChatKitPanel({
       hasAutoStartedRef.current = false;
     },
     onError: ({ error }: { error: unknown }) => {
-      // ChatKit UI handles user-facing errors; this is just for logging.
+      // ChatKit UI shows user-facing errors; this is just for logging.
       console.error("ChatKit error", error);
     },
   });
@@ -319,39 +326,65 @@ export function ChatKitPanel({
   );
 }
 
-function extractErrorDetail(payload: any, fallback: string): string {
+type ErrorLikeWithMessage = {
+  message?: unknown;
+};
+
+type ErrorDetailsWithError = {
+  error?: unknown;
+};
+
+function isErrorLikeWithMessage(
+  value: unknown
+): value is ErrorLikeWithMessage & { message: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    typeof (value as ErrorLikeWithMessage).message === "string"
+  );
+}
+
+function isErrorDetailsWithError(value: unknown): value is ErrorDetailsWithError {
+  return typeof value === "object" && value !== null && "error" in value;
+}
+
+function extractErrorDetail(
+  payload: CreateSessionResponse | undefined,
+  fallback: string
+): string {
   if (!payload) {
     return fallback;
   }
 
-  const error = (payload as any).error;
+  const { error, details, message } = payload;
+
   if (typeof error === "string") {
     return error;
   }
-  if (error && typeof error === "object" && typeof (error as any).message === "string") {
-    return (error as any).message;
+
+  if (isErrorLikeWithMessage(error)) {
+    return error.message;
   }
 
-  const details = (payload as any).details;
   if (typeof details === "string") {
     return details;
   }
-  if (details && typeof details === "object" && "error" in details) {
-    const nestedError = (details as any).error;
+
+  if (isErrorDetailsWithError(details)) {
+    const nestedError = details.error;
+
     if (typeof nestedError === "string") {
       return nestedError;
     }
-    if (
-      nestedError &&
-      typeof nestedError === "object" &&
-      typeof (nestedError as any).message === "string"
-    ) {
-      return (nestedError as any).message;
+
+    if (isErrorLikeWithMessage(nestedError)) {
+      return nestedError.message;
     }
   }
 
-  if (typeof (payload as any).message === "string") {
-    return (payload as any).message;
+  if (typeof message === "string") {
+    return message;
   }
 
   return fallback;
