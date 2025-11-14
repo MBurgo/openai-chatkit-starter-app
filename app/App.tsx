@@ -30,8 +30,7 @@ export default function App() {
             Burgo&apos;s Foolish Theme Generator
           </h1>
           <p className="text-sm opacity-80">
-            Press Start to kick off the agent, then refine the theme with
-            follow-up questions.
+            When you hit Start, a multi-agent process will be kicked off. First, a Futurist agent scans emerging trends and technologies worldwide, then ranks the themes that may be of most interest to Australian investors, based on our defined personas. Next, a senior copy chief agent turns the top theme into a complete campaign: a three‑email launch sequence plus a long‑form order page.
           </p>
         </header>
 
