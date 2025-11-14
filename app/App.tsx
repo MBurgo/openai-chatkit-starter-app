@@ -1,11 +1,13 @@
+// app/App.tsx
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { ChatKitPanel, type FactAction } from "@/components/ChatKitPanel";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 export default function App() {
   const { scheme, setScheme } = useColorScheme();
+  const [showChat, setShowChat] = useState(false);
 
   const handleWidgetAction = useCallback(async (action: FactAction) => {
     if (process.env.NODE_ENV !== "production") {
@@ -20,26 +22,43 @@ export default function App() {
   }, []);
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-slate-950 px-4 py-8 text-slate-50">
-      <div className="w-full max-w-3xl">
-        <header className="mb-6 text-center">
-          <h1 className="text-3xl font-semibold tracking-tight">
+    <main className="flex min-h-screen flex-col items-center bg-slate-100 px-4 py-10 dark:bg-slate-950">
+      <div className="mx-auto w-full max-w-5xl space-y-6">
+        {/* Page header */}
+        <header className="space-y-2 text-center">
+          <h1 className="text-3xl font-semibold">
             Burgo&apos;s Foolish Theme Generator
           </h1>
-          <p className="mt-2 text-sm text-slate-300">
-            Press &quot;Start&quot; to kick off the agent, then refine the
-            output with follow‑up questions.
+          <p className="text-sm opacity-80">
+            Press Start to kick off the agent, then refine the theme with
+            follow-up questions.
           </p>
         </header>
 
-        <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 shadow-lg">
+        {/* Start button shown before ChatKit is visible */}
+        {!showChat && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => setShowChat(true)}
+              className="rounded-full border border-slate-700 px-6 py-3 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-100 dark:border-slate-300 dark:text-slate-50 dark:hover:bg-slate-800"
+            >
+              Start
+            </button>
+          </div>
+        )}
+
+        {/* ChatKit mounts only after Start is clicked.
+            autoStartText tells ChatKitPanel to send the first message for you. */}
+        {showChat && (
           <ChatKitPanel
             theme={scheme}
             onWidgetAction={handleWidgetAction}
             onResponseEnd={handleResponseEnd}
             onThemeRequest={setScheme}
+            autoStartText="Start"
           />
-        </section>
+        )}
       </div>
     </main>
   );
