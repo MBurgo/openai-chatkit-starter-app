@@ -1,3 +1,4 @@
+// components/ChatKitPanel.tsx
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -24,6 +25,11 @@ type ChatKitPanelProps = {
   onWidgetAction: (action: FactAction) => Promise<unknown>;
   onResponseEnd: () => void;
   onThemeRequest: (scheme: ColorScheme) => void;
+  /**
+   * Optional text to send automatically as the first message
+   * when the chat is ready (used by the Start button in App.tsx).
+   */
+  autoStartText?: string;
 };
 
 type ErrorState = {
@@ -41,12 +47,14 @@ export function ChatKitPanel({
   onWidgetAction,
   onResponseEnd,
   onThemeRequest,
+  autoStartText,
 }: ChatKitPanelProps) {
   const processedFacts = useRef<Set<string>>(new Set());
   const [errors, setErrors] = useState<ErrorState>(() => createInitialErrors());
   const [isInitializingSession, setIsInitializingSession] = useState(true);
   const [widgetInstanceKey, setWidgetInstanceKey] = useState(0);
   const isMountedRef = useRef(true);
+  const hasAutoStartedRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -54,19 +62,20 @@ export function ChatKitPanel({
     };
   }, []);
 
-  const isWorkflowConfigured =
-    Boolean(WORKFLOW_ID && !WORKFLOW_ID.startsWith("wf_replace"));
-
   const setErrorMessage = useCallback((message: string | null) => {
     setErrors({ message });
   }, []);
 
   const handleResetChat = useCallback(() => {
     processedFacts.current.clear();
+    hasAutoStartedRef.current = false;
     setIsInitializingSession(true);
     setErrors(createInitialErrors());
     setWidgetInstanceKey((prev) => prev + 1);
   }, []);
+
+  const isWorkflowConfigured =
+    Boolean(WORKFLOW_ID && !WORKFLOW_ID.startsWith("wf_replace"));
 
   const getClientSecret = useCallback(
     async (currentSecret: string | null) => {
@@ -106,7 +115,7 @@ export function ChatKitPanel({
           body: JSON.stringify({
             workflow: { id: WORKFLOW_ID },
             chatkit_configuration: {
-              // enable attachments if your workflow supports them
+              // Enable attachments if your workflow supports them
               file_upload: {
                 enabled: true,
               },
@@ -178,10 +187,7 @@ export function ChatKitPanel({
     [isWorkflowConfigured, setErrorMessage]
   );
 
-  const {
-    control,
-    sendUserMessage,
-  } = useChatKit({
+  const { control, sendUserMessage } = useChatKit({
     api: { getClientSecret },
     theme: {
       colorScheme: theme,
@@ -210,7 +216,7 @@ export function ChatKitPanel({
           if (isDev) {
             console.debug("[ChatKitPanel] switch_theme", requested);
           }
-          onThemeRequest(requested);
+          onThemeRequest(requested as ColorScheme);
           return { success: true };
         }
         return { success: false };
@@ -245,26 +251,39 @@ export function ChatKitPanel({
     },
     onThreadChange: () => {
       processedFacts.current.clear();
+      hasAutoStartedRef.current = false;
     },
     onError: ({ error }: { error: unknown }) => {
-      // ChatKit shows user-facing errors; this is just for logging.
+      // ChatKit UI handles user-facing errors; this is just for logging.
       console.error("ChatKit error", error);
     },
   });
 
-  const handleStartClick = useCallback(async () => {
-    if (!sendUserMessage) {
+  // Auto-start the first message when the chat is ready and autoStartText is set.
+  useEffect(() => {
+    if (!control || !sendUserMessage || !autoStartText) {
       return;
     }
-    try {
-      await sendUserMessage({
-        text: "Start",
-        newThread: true,
-      });
-    } catch (error) {
-      console.error("[ChatKitPanel] Failed to send Start message", error);
+    if (hasAutoStartedRef.current) {
+      return;
     }
-  }, [sendUserMessage]);
+
+    hasAutoStartedRef.current = true;
+
+    (async () => {
+      try {
+        await sendUserMessage({
+          text: autoStartText,
+          newThread: true,
+        });
+      } catch (error) {
+        console.error("Failed to send auto-start message", error);
+        setErrorMessage(
+          "Connected, but failed to send the initial message. You can type manually."
+        );
+      }
+    })();
+  }, [control, sendUserMessage, autoStartText, setErrorMessage]);
 
   const hasError = Boolean(errors.message);
 
@@ -287,17 +306,6 @@ export function ChatKitPanel({
         onRetry={hasError ? handleResetChat : null}
       />
 
-      <div className="mb-4 flex justify-center">
-        <button
-          type="button"
-          className="rounded-md border border-slate-300 bg-white px-6 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-50 dark:hover:bg-slate-700"
-          disabled={!control}
-          onClick={handleStartClick}
-        >
-          Start
-        </button>
-      </div>
-
       <div className="flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {control ? (
           <ChatKit key={widgetInstanceKey} control={control} className="h-full" />
@@ -316,40 +324,34 @@ function extractErrorDetail(payload: any, fallback: string): string {
     return fallback;
   }
 
-  const error = payload.error;
+  const error = (payload as any).error;
   if (typeof error === "string") {
     return error;
   }
-  if (
-    error &&
-    typeof error === "object" &&
-    "message" in error &&
-    typeof (error as { message?: unknown }).message === "string"
-  ) {
-    return (error as { message: string }).message;
+  if (error && typeof error === "object" && typeof (error as any).message === "string") {
+    return (error as any).message;
   }
 
-  const details = payload.details;
+  const details = (payload as any).details;
   if (typeof details === "string") {
     return details;
   }
   if (details && typeof details === "object" && "error" in details) {
-    const nestedError = (details as { error?: unknown }).error;
+    const nestedError = (details as any).error;
     if (typeof nestedError === "string") {
       return nestedError;
     }
     if (
       nestedError &&
       typeof nestedError === "object" &&
-      "message" in nestedError &&
-      typeof (nestedError as { message?: unknown }).message === "string"
+      typeof (nestedError as any).message === "string"
     ) {
-      return (nestedError as { message: string }).message;
+      return (nestedError as any).message;
     }
   }
 
-  if (typeof payload.message === "string") {
-    return payload.message;
+  if (typeof (payload as any).message === "string") {
+    return (payload as any).message;
   }
 
   return fallback;
